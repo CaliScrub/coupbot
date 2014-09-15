@@ -7,14 +7,18 @@ from twisted.words.protocols import irc
 from twisted.internet import protocol, reactor
 
 class CoupCommandDispatcher():
-    coup_game = coup.Game()
-    admin = 'caliscrub'
+    def __init__(self):
+        self.coup_game = coup.Game()
+        self.admins = ['caliscrub', 'gahitsu', 'hitsu']
 
     def get_response(self, target, response_text):
         response = {}
         response['target'] = target
         response['response'] = 'COUP: %s' % response_text
         return response
+
+    def is_admin(self, name):
+        return name.lower() in self.admins
 
     def help_text(self):
         helptext = """
@@ -32,7 +36,7 @@ status - view everyone's public status!
 
 Action Commands (MAYBE NOT IMPLEMENTED YET):
 income - take 1 coin
-foreign - foreign aid for 2 coins
+foreignaid - foreign aid for 2 coins
 coup - remove another player's influence for 7 coins
 steal - take 2 coins from someone with your captain(?)
 tax = tax 3 coins with your duke(?)
@@ -64,18 +68,15 @@ challenge = call someone's bullshit!
         elif command == 'viewcards':
             result = self.coup_game.get_private_status(username)
             return self.get_response(username, result)
+        elif command in self.coup_game.actions:
+            victim = None
+            if len(params) > 0:
+                victim = params[0]
+            result = self.coup_game.perform_initiative_action(command, username, victimname=victim)
+            return self.get_response(channel, result)
         elif command == 'steal':
             victim = params[0]
             result = self.coup_game.steal(username, victim)
-            return self.get_response(channel, result)
-        elif command == 'tax':
-            result = self.coup_game.tax(username)
-            return self.get_response(channel, result)
-        elif command == 'income':
-            result = self.coup_game.income(username)
-            return self.get_response(channel, result)
-        elif command == 'foreign':
-            result = self.coup_game.foreignaid(username)
             return self.get_response(channel, result)
         elif command == 'clearplayers':
             result = self.coup_game.clear_players()
@@ -93,7 +94,24 @@ challenge = call someone's bullshit!
             cardtype = params[0]
             result = self.coup_game.reveal(username, cardtype)
             return self.get_response(channel, result)
-        elif username.lower() == self.admin:
+        elif command == 'ambreturn':
+            cardtype = params[0]
+            result = self.coup_game.ambassador_return(username, cardtype)
+            return self.get_response(channel, result)
+        elif command == 'challenge':
+            result = self.coup_game.challenge(username)
+            return self.get_response(channel, result)
+        elif command == 'block':
+            if len(params) > 0:
+                cardtype = params[0]
+                result = self.coup_game.block(username, cardtype)
+            else:
+                result = self.coup_game.block(username)
+            return self.get_response(channel, result)
+        elif command == 'score':
+            result = self.coup_game.get_score()
+            return self.get_response(channel, result)
+        elif self.is_admin(username):
             if command == 'admin-nextturn':
                 result = self.coup_game.get_next_turnowner()
                 return self.get_response(channel, result)
@@ -125,6 +143,10 @@ challenge = call someone's bullshit!
                 player = params[0]
                 index = int(params[1])
                 result = self.coup_game.admin_return_card(player, index)
+                return self.get_response(channel, result)
+            elif command == 'admin-forceturn':
+                player = params[0]
+                result = self.coup_game.admin_force_turn_change(player)
                 return self.get_response(channel, result)
         return self.get_response(channel, 'Unknown command')
 
@@ -202,10 +224,12 @@ if __name__ == "__main__":
         chan_key = None
         if len(sys.argv) == 4:
             chan_key = sys.argv[3]
+        coup.test_stuff()
         reactor.connectTCP('irc.esper.net', 6667, MyBotFactory(
             nickname=nick, channel=channel, channel_key=chan_key))
         reactor.run()
     except IndexError:
+        print "Args were %s" % str(sys.argv)
         print "Please specify a nickname & channel name."
         print "Example:"
         print "    python {} nick channel [channel_password]"\
