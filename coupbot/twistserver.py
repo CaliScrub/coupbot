@@ -13,8 +13,7 @@ class CoupCommandDispatcher():
 
     def get_response(self, target, response_text):
         response = {}
-        response['target'] = target
-        response['response'] = 'COUP: %s' % response_text
+        response[target] = 'COUP: %s' % response_text
         return response
 
     def is_admin(self, name):
@@ -61,7 +60,12 @@ challenge = call someone's bullshit!
             return self.get_response(channel, result)
         elif command == 'start':
             result = self.coup_game.new_round()
-            return self.get_response(channel, result)
+            if 'New round has started' in result:
+                messages = self.coup_game.get_all_private_statuses()
+                messages[channel] = result
+            else:
+                messages = self.get_response(channel, result)
+            return messages
         elif command == 'quit':
             result = self.coup_game.quit_game()
             return self.get_resonse(channel, result)
@@ -151,7 +155,6 @@ challenge = call someone's bullshit!
         return self.get_response(channel, 'Unknown command')
 
 class MyBot(irc.IRCClient):
-    whycount = 0
     coins_flipped = 0
     coup_commander = CoupCommandDispatcher()
     def _get_nickname(self):
@@ -172,9 +175,16 @@ class MyBot(irc.IRCClient):
     def flipcoin(self):
         return random.choice(['heads', 'tails'])
 
+    def send_messages(messagetable):
+        """
+        Sends messages from a table which defines recipients as keys and messages as values.
+        """
+        for recipient in messagetable.iterkeys():
+            self.msg(recipient, messagetable[recipient])
+    
     def privmsg(self, user, channel, msg):
         """
-        Whenever someone says "why" give a lazy programmer response
+        Handles messages received
         """
         #quitcommandmatch =
         username = user.split('!')[0]
@@ -199,7 +209,7 @@ class MyBot(irc.IRCClient):
             if len(couptext) > 1 and couptext[0].lower() == '!coup':
                 command = couptext[1]
                 result = self.coup_commander.exec_command(username, self.factory.channel, command)
-                self.msg(result['target'], result['response'])
+                send_messages(result)
 
 class MyBotFactory(protocol.ClientFactory):
     protocol = MyBot

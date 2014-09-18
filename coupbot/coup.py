@@ -3,7 +3,7 @@ import random
 from abc import abstractproperty, abstractmethod, ABCMeta # abstract base class
 from collections import OrderedDict
 
-#TODO: !pass, auto !viewcards at beginning of turn
+#TODO: !pass, coup status should show list of waiters
 
 class Deck(object):
     cardtypes = ['Duke', 'Assassin', 'Contessa', 'Captain', 'Ambassador']
@@ -669,6 +669,14 @@ class Game(object):
                 return player.status_check()
         else:
             return 'Game is not running'
+
+    def get_all_private_statuses(self):
+        statuses = {}
+        if self.is_running():
+            for player in self._players.values():
+                if not player.is_dead():
+                    statuses[player.name] = player.status_check()
+        return statuses
 
     def kill_influence(self, playername, cardtype):
         if self.is_running():
