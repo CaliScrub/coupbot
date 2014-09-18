@@ -155,12 +155,18 @@ challenge = call someone's bullshit!
         return self.get_response(channel, 'Unknown command')
 
 class MyBot(irc.IRCClient):
-    coins_flipped = 0
-    coup_commander = CoupCommandDispatcher()
     def _get_nickname(self):
         return self.factory.nickname
     nickname = property(_get_nickname)
 
+    def _init_(self, *args, **kwargs):
+        super(MyBot, self).__init__(*args, **kwargs)
+        self.coins_flipped = 0
+        self.coup_commander = CoupCommandDispatcher()
+
+    def is_admin(self, name):
+        return name.lower() in self.admins
+    
     def _reset_counters(self):
         self.coins_flipped = 0
     
