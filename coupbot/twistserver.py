@@ -175,7 +175,7 @@ class MyBot(irc.IRCClient):
     def flipcoin(self):
         return random.choice(['heads', 'tails'])
 
-    def send_messages(messagetable):
+    def send_messages(self, messagetable):
         """
         Sends messages from a table which defines recipients as keys and messages as values.
         """
@@ -209,7 +209,7 @@ class MyBot(irc.IRCClient):
             if len(couptext) > 1 and couptext[0].lower() == '!coup':
                 command = couptext[1]
                 result = self.coup_commander.exec_command(username, self.factory.channel, command)
-                send_messages(result)
+                self.send_messages(result)
 
 class MyBotFactory(protocol.ClientFactory):
     protocol = MyBot
