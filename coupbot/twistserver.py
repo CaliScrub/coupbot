@@ -6,7 +6,7 @@ import coup
 from twisted.words.protocols import irc
 from twisted.internet import protocol, reactor
 
-class CoupCommandDispatcher():
+class CoupCommandDispatcher(object):
     def __init__(self):
         self.coup_game = coup.Game()
         self.admins = ['caliscrub', 'gahitsu', 'hitsu']
@@ -68,7 +68,7 @@ challenge = call someone's bullshit!
             return messages
         elif command == 'quit':
             result = self.coup_game.quit_game()
-            return self.get_resonse(channel, result)
+            return self.get_response(channel, result)
         elif command == 'viewcards':
             result = self.coup_game.get_private_status(username)
             return self.get_response(username, result)
@@ -158,12 +158,11 @@ class MyBot(irc.IRCClient):
     def _get_nickname(self):
         return self.factory.nickname
     nickname = property(_get_nickname)
-
-    def _init_(self, *args, **kwargs):
-        super(MyBot, self).__init__(*args, **kwargs)
+    
+    def __init__(self, *args, **kwargs):
         self.coins_flipped = 0
         self.coup_commander = CoupCommandDispatcher()
-
+    
     def is_admin(self, name):
         return name.lower() in self.admins
     
@@ -208,7 +207,7 @@ class MyBot(irc.IRCClient):
             self.msg(self.factory.channel, response)
             self.coins_flipped = self.coins_flipped + 1
         elif msg.startswith('!flipcount'):
-            response = 'The coin has been flipped %s times' % self.coins_flipped
+            response = 'The coin has been flipped %s times, test' % self.coins_flipped
             self.msg(self.factory.channel, response)
         elif msg.lower().startswith('!coup'):
             couptext = msg.split(None, 1)
@@ -240,7 +239,6 @@ if __name__ == "__main__":
         chan_key = None
         if len(sys.argv) == 4:
             chan_key = sys.argv[3]
-        coup.test_stuff()
         reactor.connectTCP('irc.esper.net', 6667, MyBotFactory(
             nickname=nick, channel=channel, channel_key=chan_key))
         reactor.run()
