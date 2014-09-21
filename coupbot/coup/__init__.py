@@ -1,1 +1,1 @@
-from game import Game
+from commander import CoupCommander
