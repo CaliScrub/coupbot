@@ -28,10 +28,9 @@ class Deck(object):
                 if search_for_card.lower() in card.lower():
                     if matched_card is None:
                         matched_card = card
-                    else:
-                        # more than 1 card type that lazily matches
-                        if matched_card != card:
-                            return None
+                    # more than 1 card type that lazily matches
+                    elif matched_card != card:
+                        return None
             return matched_card
     
     def draw(self, numcards=1):

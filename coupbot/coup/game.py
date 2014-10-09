@@ -60,7 +60,7 @@ class Game(object):
             if newindex >= len(playernames):
                 newindex = 0
             newname = playernames[newindex]
-            player = self.get_player(newname)
+            player = self.get_player(newname, exact=True)
             if player is not None and not player.is_dead() and newname != self._turnowner:
                 self._turnowner = newname
                 return 'It is now %s\'s turn' % newname
@@ -105,9 +105,22 @@ class Game(object):
         else:
             return 'Cannot start new round now'
 
-    def get_player(self, name):
+    def get_player(self, name, exact=False):
+        # exact match
         if self._players.has_key(name):
             return self._players[name]
+        elif len(name.lower().strip()) >= 1 and not exact:
+            matched_name = ''
+            for pname in self._players.iterkeys():
+                if name.lower() in pname.lower():
+                    if matched_name is None:
+                        matched_name = pname
+                    elif matched_name != pname:
+                        return None
+            if matched_name is None:
+                return None
+            else:
+                return self._players[matched_name]
         else:
             return None
 
