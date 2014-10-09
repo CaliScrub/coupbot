@@ -27,23 +27,12 @@ class Player(object):
         return status
 
     def has_card_type(self, cardtype):
-        for heldtype in self._cards:
-            if heldtype == cardtype:
-                return True
-        return False
+        return cardtype in self._cards
 
     def kill_card(self, cardtype):
         if self.has_card_type(cardtype):
             self._cards.remove(cardtype)
             self._dead_cards.append(cardtype)
-            return True
-        else:
-            return False
-
-    def kill_a_card(self):
-        if len(self._cards) > 1:
-            deadcard = self._cards.pop()
-            self._dead_cards.append(deadcard)
             return True
         else:
             return False

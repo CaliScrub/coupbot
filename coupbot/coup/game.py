@@ -42,7 +42,7 @@ class Game(object):
             if num_alive_players > 1:
                 return False
             elif num_alive_players == 1:
-                last_alive_players.add_wins(1)
+                last_alive_player.add_wins(1)
                 self._lastwinner = last_alive_player.name
                 self._state = 'DONE'
                 return True
@@ -291,15 +291,18 @@ class Game(object):
                     statuses[player.name] = player.status_check()
         return statuses
 
-    def kill_influence(self, playername, cardtype):
+    def kill_influence(self, playername, cardtype, admin=False):
         if self.is_running():
             player = self.get_player(playername)
             if player is None:
                 return '%s is not playing the game' % playername
-            if player.kill_card(cardtype):
-                return '%s has chosen a %s to die' % (playername, cardtype)
+            true_cardtype = self._deck.find_card_type(cardtype)
+            if true_cardtype is None:
+                return 'Cannot resolve %s to a card type' % cardtype
+            if player.kill_card(true_cardtype):
+                return '%s has chosen a %s to die%s' % (playername, true_cardtype, ' (decreed by admin)' if admin else '')
             else:
-                return '%s does not have a %s to sacrifice' % (playername, cardtype)
+                return '%s does not have a %s to sacrifice' % (playername, true_cardtype)
         else:
             return 'Game is not running'
 

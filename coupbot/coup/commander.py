@@ -116,7 +116,7 @@ challenge = call someone's bullshit!
             elif command == 'admin-kill':
                 victim = params[0]
                 cardtype = params[1]
-                result = self.coup_game.kill_influence(victim, cardtype)
+                result = self.coup_game.kill_influence(victim, cardtype, admin=True)
                 return self.get_response(publicspace, result)
             elif command == 'admin-addmoney':
                 victim = params[0]

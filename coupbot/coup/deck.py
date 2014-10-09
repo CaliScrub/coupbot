@@ -18,6 +18,21 @@ class Deck(object):
     
     def shuffle(self):
         random.shuffle(self._cards)
+
+    def find_card_type(search_for_card):
+        if search_for_card in cardtypes:
+            return search_for_card
+        else:
+            matched_card = None
+            for card in cardtypes:
+                if search_for_card.lower() in card.lower():
+                    if matched_card is None:
+                        matched_card = card
+                    else:
+                        # more than 1 card type that lazily matches
+                        if matched_card != card:
+                            return None
+            return matched_card
     
     def draw(self, numcards=1):
         drawn = []
