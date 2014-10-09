@@ -19,12 +19,12 @@ class Deck(object):
     def shuffle(self):
         random.shuffle(self._cards)
 
-    def find_card_type(search_for_card):
-        if search_for_card in cardtypes:
+    def find_card_type(self, search_for_card):
+        if search_for_card in self.cardtypes:
             return search_for_card
         else:
             matched_card = None
-            for card in cardtypes:
+            for card in self.cardtypes:
                 if search_for_card.lower() in card.lower():
                     if matched_card is None:
                         matched_card = card

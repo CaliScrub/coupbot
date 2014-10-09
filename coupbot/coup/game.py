@@ -266,10 +266,13 @@ class Game(object):
             if player is None:
                 return '%s is not playing the game' % playername
             else:
-                if self.return_and_redraw(player, cardtype):
-                    return '%s has a %s! It was returned to the deck, and %s drew a new card from the reshuffled deck' % (playername, cardtype, playername)
+                true_cardtype = self._deck.find_card_type(cardtype)
+                if true_cardtype is None:
+                    return 'Cannot resolve %s to a card type' % cardtype
+                if self.return_and_redraw(player, true_cardtype):
+                    return '%s has a %s! It was returned to the deck, and %s drew a new card from the reshuffled deck' % (playername, true_cardtype, playername)
                 else:
-                    return '%s does not have a %s!' % (playername, cardtype)
+                    return '%s does not have a %s!' % (playername, true_cardtype)
         else:
             return 'Game is not running'
     
