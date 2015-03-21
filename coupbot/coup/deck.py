@@ -1,6 +1,14 @@
 import sys
 import random
 
+cardtype_shorthand = {
+    'Duke': 'DU',
+    'Assassin': 'AS',
+    'Contessa': 'CO',
+    'Captain': 'CA',
+    'Ambassador': 'AM',
+}
+
 class Deck(object):
     cardtypes = ['Duke', 'Assassin', 'Contessa', 'Captain', 'Ambassador']
     
@@ -39,9 +47,9 @@ class Deck(object):
             drawn = drawn + [self._cards.pop()]
         return drawn
     
-    def return_cards(self, cardlist):
-        self._cards = self._cards + cardlist
-    
-    def return_card(self, card):
-        self._cards.append(card)
+    def return_cards(self, cards):
+        if isinstance(cards, tuple) or isinstance(cards, list):
+            self._cards = self._cards + list(cards)
+        else:
+            self._cards.append(cards)
 

@@ -1,13 +1,15 @@
 from game import Game
+import settings
 
 class CoupCommander(object):
     def __init__(self):
         self.coup_game = Game()
-        self.admins = ['caliscrub', 'gahitsu', 'hitsu']
+        self.admins = settings.ADMINS
 
     def get_response(self, target, response_text):
-        response = {}
-        response[target] = 'COUP: %s' % response_text
+        response = {
+            target: 'COUP: %s' % response_text
+        }
         return response
 
     def is_admin(self, name):
@@ -87,6 +89,9 @@ challenge = call someone's bullshit!
             return self.get_response(publicspace, result)
         elif command == 'status':
             result = self.coup_game.get_public_status()
+            return self.get_response(publicspace, result)
+        elif command == 'pstat':
+            result = self.coup_game.get_public_player_status()
             return self.get_response(publicspace, result)
         elif command == 'reveal':
             cardtype = params[0]

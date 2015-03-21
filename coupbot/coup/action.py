@@ -60,9 +60,16 @@ class Action(object):
         else:
             return None
 
-    def get_status(self):
-        params = {'name': self.name, 'stat_msg': self.status_message, 'state': self.state}
-        statustext = 'Action: %(name)s -- State: %(state)s -- Note: %(stat_msg)s' % params
+    def get_status(self, shortform=False):
+        params = {'name': self.name, 'stat_msg': self.status_message, 'state': self.state, 'actor': self.actor.name}
+        if self.target is not None:
+            params['target'] = self.target.name
+        else:
+            params['target'] = None
+        if shortform:
+            statustext = 'Action %(name)s by %(actor)s on %(target)s, status %(state)s' % params
+        else:
+            statustext = 'Action: %(name)s -- State: %(state)s -- Note: %(stat_msg)s' % params
         return statustext
 
 class Income(Action):

@@ -1,6 +1,4 @@
-import sys
 import random
-from abc import abstractproperty, abstractmethod, ABCMeta # abstract base class
 from collections import OrderedDict
 
 from deck import Deck
@@ -166,18 +164,36 @@ class Game(object):
         else:
             return 'Players cannot change seats now'
 
-    def get_public_status(self):
+    def get_public_status(self, shortform = True):
         result = ''
         statuses = []
         player_statuses = []
         if self.is_running():
             statuses.append('Current turn: %s' % self._turnowner)
+            if self._lastaction is not None:
+                statuses.append('LAST ACTION was: %s' % self._lastaction.get_status(shortform=True))
             for player in self._players.values():
                 player_statuses.append(player.public_status_check())
-            statuses.append(str.join('\r\n', player_statuses))
-            if self._lastaction is not None:
-                statuses.append('LAST ACTION was: %s' % self._lastaction.get_status())
-            stattext = str.join('\r\n', statuses)
+            if shortform:
+                statuses.append('PLAYERS: ' + str.join('--', player_statuses))
+                stattext = str.join(' - ', statuses)
+            else:
+                statuses.append(str.join('\r\n', player_statuses))
+                stattext = str.join('\r\n', statuses)
+            result = 'Public stats: %s' % (stattext)
+        else:
+            result = 'Game is not running'
+        return result
+
+    def get_public_player_status(self, shortform = True):
+        statuses = []
+        if self.is_running():
+            for player in self._players.values():
+                statuses.append(player.public_status_check())
+            if shortform:
+                stattext = str.join('--', statuses)
+            else:
+                stattext = str.join('\r\n', statuses)
             result = 'Public stats: %s' % (stattext)
         else:
             result = 'Game is not running'
@@ -204,7 +220,7 @@ class Game(object):
                 return '%s is not playing the game' % playername
             if player.has_card_type(cardtype) and (len(player._cards) + len(player._dead_cards)) > 2:
                 player.return_cardtype(cardtype)
-                self._deck.return_card(cardtype)
+                self._deck.return_cards(cardtype)
                 self._deck.shuffle()
                 return '%s returned a card as per ambassador powers' % playername
             else:
@@ -215,7 +231,7 @@ class Game(object):
     def return_and_redraw(self, player, cardtype):
         if player.has_card_type(cardtype):
             player.return_cardtype(cardtype)
-            self._deck.return_card(cardtype)
+            self._deck.return_cards(cardtype)
             self._deck.shuffle()
             self.draw(player)
             return True
@@ -372,7 +388,7 @@ class Game(object):
             player = self.get_player(playername)
             if player is not None and not player.is_dead():
                 returncard = player.return_cardindex(index)
-                self._deck.return_card(returncard)
+                self._deck.return_cards(returncard)
                 return 'Admin has returned a cards for %s' % playername
             else:
                 return '%s is not playing the game' % playername

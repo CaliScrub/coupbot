@@ -1,4 +1,5 @@
 import sys
+import deck
 
 class Player(object):
     
@@ -18,12 +19,23 @@ class Player(object):
         deadcardlist = str.join(', ', self._dead_cards)
         return 'Your live cards are: %s; your dead cards are: %s, you have %s coin(s)' % (livecardlist, deadcardlist, self._money)
 
-    def public_status_check(self):
+    def public_status_check(self, shortform=True):
         deadcardlist = str.join(', ', self._dead_cards)
         if self.is_dead():
-            status = '%s is dead with dead cards: %s' % (self.name, deadcardlist)
+            if shortform:
+                deadtext = str.join(' ', [deck.cardtype_shorthand[card] for card in self._dead_cards])
+                status = '%s (DEAD): %s' % (self.name, deadtext)
+            else:
+                status = '%s is dead with dead cards: %s' % (self.name, deadcardlist)
         else:
-            status = '%s is alive with dead cards: %s; and %s coin(s)' % (self.name, deadcardlist, self._money)
+            if shortform:
+                livelist = ['??' for card in self._cards]
+                deadlist = [deck.cardtype_shorthand[card] for card in self._dead_cards]
+                cardlist = livelist + deadlist
+                cardtext = str.join(' ', cardlist)
+                status = '%s: %s, $%s' % (self.name, cardtext, self._money)
+            else:
+                status = '%s is alive with dead cards: %s; and %s coin(s)' % (self.name, deadcardlist, self._money)
         return status
 
     def has_card_type(self, cardtype):
