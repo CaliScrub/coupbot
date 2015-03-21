@@ -1,3 +1,5 @@
+.idea
+.pydevproject
 *.pyc
 *.pyo
 *.swp
