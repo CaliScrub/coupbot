@@ -1,13 +1,15 @@
 from game import Game
+import settings
 
 class CoupCommander(object):
     def __init__(self):
         self.coup_game = Game()
-        self.admins = ['caliscrub', 'gahitsu', 'hitsu']
+        self.admins = settings.ADMINS
 
     def get_response(self, target, response_text):
-        response = {}
-        response[target] = 'COUP: %s' % response_text
+        response = {
+            target: 'COUP: %s' % response_text
+        }
         return response
 
     def is_admin(self, name):
@@ -72,9 +74,8 @@ challenge = call someone's bullshit!
                 victim = params[0]
             result = self.coup_game.perform_initiative_action(command, username, victimname=victim)
             return self.get_response(publicspace, result)
-        elif command == 'steal':
-            victim = params[0]
-            result = self.coup_game.steal(username, victim)
+        elif command == 'pass':
+            result = self.coup_game.player_pass(username)
             return self.get_response(publicspace, result)
         elif command == 'clearplayers':
             result = self.coup_game.clear_players()
@@ -87,6 +88,9 @@ challenge = call someone's bullshit!
             return self.get_response(publicspace, result)
         elif command == 'status':
             result = self.coup_game.get_public_status()
+            return self.get_response(publicspace, result)
+        elif command == 'pstat':
+            result = self.coup_game.get_public_player_status()
             return self.get_response(publicspace, result)
         elif command == 'reveal':
             cardtype = params[0]
@@ -116,7 +120,7 @@ challenge = call someone's bullshit!
             elif command == 'admin-kill':
                 victim = params[0]
                 cardtype = params[1]
-                result = self.coup_game.kill_influence(victim, cardtype)
+                result = self.coup_game.kill_influence(victim, cardtype, admin=True)
                 return self.get_response(publicspace, result)
             elif command == 'admin-addmoney':
                 victim = params[0]

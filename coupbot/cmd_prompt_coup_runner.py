@@ -1,4 +1,5 @@
 import coup
+import logging
 
 if __name__ == "__main__":
     input_buffer = ''
@@ -9,9 +10,12 @@ if __name__ == "__main__":
         if len(couptext) > 1:
             username = couptext[0]
             command = couptext[1]
-            result = coup_commander.exec_command(username, 'Public', command)
-            if result is not None:
-                for rkey in result.iterkeys():
-                    print 'Message to %s -> %s' % (rkey, result[rkey])
+            try:
+                result = coup_commander.exec_command(username, 'Public', command)
+                if result is not None:
+                    for rkey in result.iterkeys():
+                        print 'Message to %s -> %s' % (rkey, result[rkey])
+            except Exception as e:
+                logging.exception('Command %s failed with exception' % command)
     print 'Exiting now'
     exit(0)

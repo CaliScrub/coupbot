@@ -2,6 +2,7 @@ import sys
 import re
 import random
 import coup
+import settings
 
 from twisted.words.protocols import irc
 from twisted.internet import protocol, reactor
@@ -86,12 +87,15 @@ class MyBotFactory(protocol.ClientFactory):
 
 if __name__ == "__main__":
     try:
-        nick = sys.argv[1]
-        channel = sys.argv[2]
-        chan_key = None
-        if len(sys.argv) == 4:
-            chan_key = sys.argv[3]
-        reactor.connectTCP('irc.esper.net', 6667, MyBotFactory(
+        nick = settings.BOT_NICKNAME
+        channel = settings.DEFAULT_CHANNEL['name']
+        server = settings.SERVER
+        port = settings.PORT
+        if 'password' in settings.DEFAULT_CHANNEL:
+            chan_key = settings.DEFAULT_CHANNEL['password']
+        else:
+            chan_key = None
+        reactor.connectTCP(server, port, MyBotFactory(
             nickname=nick, channel=channel, channel_key=chan_key))
         reactor.run()
     except IndexError:

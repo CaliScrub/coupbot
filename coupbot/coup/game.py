@@ -1,10 +1,9 @@
-import sys
 import random
-from abc import abstractproperty, abstractmethod, ABCMeta # abstract base class
 from collections import OrderedDict
 
 from deck import Deck
 from player import Player
+from action import State
 import action
 
 #TODO: !pass, coup status should show list of waiters
@@ -14,6 +13,7 @@ class Game(object):
     def __init__(self):
         self._state = 'STARTING'
         self._players = OrderedDict()
+        self._passers = []
         self._deck = None
         self._state = 'STARTING'
         self._lastwinner = None
@@ -42,7 +42,7 @@ class Game(object):
             if num_alive_players > 1:
                 return False
             elif num_alive_players == 1:
-                last_alive_players.add_wins(1)
+                last_alive_player.add_wins(1)
                 self._lastwinner = last_alive_player.name
                 self._state = 'DONE'
                 return True
@@ -60,18 +60,71 @@ class Game(object):
             if newindex >= len(playernames):
                 newindex = 0
             newname = playernames[newindex]
-            player = self.get_player(newname)
+            player = self.get_player(newname, exact=True)
             if player is not None and not player.is_dead() and newname != self._turnowner:
+                self._passers = []
                 self._turnowner = newname
                 return 'It is now %s\'s turn' % newname
             else:
                 newindex = newindex + 1
         return 'Cannot find a new turn owner'
+
+    def auto_advance_and_resolve(self):
+        if self.check_for_end_state():
+            return 'Game over, no need to advance'
+        elif self._lastaction is None:
+            return 'Game just started, no action yet?'
+        else:
+            self._lastaction.auto_advance()
+            result = self._lastaction.get_status()
+            if self._lastaction.is_resolved:
+                result += '\r\n' + self.get_next_turnowner()
+            return result
+
+
+    def get_necessary_passers(self):
+        if self.check_for_end_state():
+            return 'Game over, no passers needed'
+        elif self._lastaction is None:
+            return 'No action to pass for'
+        if (self._lastaction.state == State.PENDING_CHALLENGE
+                or (self._lastaction.state == State.PENDING_BLOCKERS
+                    and isinstance(self._lastaction, self.actions['foreign_aid']))):
+            return list(set(self._players) - set([self._lastaction.actor.name]))
+        elif self._lastaction.state == State.BLOCK_PENDING_CHALLENGE:
+            return list(set(self._players) - set([self._lastaction.blocker.name]))
+        elif self._lastaction.state == State.PENDING_BLOCKERS:
+            return [self._lastaction.target]
+        else:
+            return None
+
+    def get_passers_left(self):
+        if self.get_necessary_passers() is None:
+            return None
+        else:
+            return list(set(self.get_necessary_passers()) - set(self._passers))
+
+    def player_pass(self, playername):
+        if self.is_running():
+            player = self.get_player(playername)
+            if player is None or player.is_dead():
+                return '%s is not playing the game' % playername
+            elif playername in self._passers:
+                return '%s has already passed' % playername
+            else:
+                self._passers.append(playername)
+                if len(self.get_passers_left()) > 0:
+                    return '%s has passed' % playername
+                else:
+                    self._lastaction.pass_advance()
+                    return self.auto_advance_and_resolve()
+        else:
+            return 'Game is not running'
     
     def admin_force_turn_change(self, playername):
         if self.is_running():
             if self._lastaction is not None and not self._lastaction.is_resolved:
-                self._lastaction.is_resolved = True # to let the game continue
+                self._lastaction.force_resolve() # to let the game continue
                 self._lastaction.status_message = self._lastaction.status_message + '\r\nAction resolution forced by admin'
             player = self.get_player(playername)
             if player is not None and not player.is_dead():
@@ -105,9 +158,22 @@ class Game(object):
         else:
             return 'Cannot start new round now'
 
-    def get_player(self, name):
+    def get_player(self, name, exact=False):
+        # exact match
         if self._players.has_key(name):
             return self._players[name]
+        elif len(name.lower().strip()) >= 1 and not exact:
+            matched_name = ''
+            for pname in self._players.iterkeys():
+                if name.lower() in pname.lower():
+                    if matched_name is None:
+                        matched_name = pname
+                    elif matched_name != pname:
+                        return None
+            if matched_name is None:
+                return None
+            else:
+                return self._players[matched_name]
         else:
             return None
 
@@ -153,18 +219,36 @@ class Game(object):
         else:
             return 'Players cannot change seats now'
 
-    def get_public_status(self):
+    def get_public_status(self, shortform = True):
         result = ''
         statuses = []
         player_statuses = []
         if self.is_running():
             statuses.append('Current turn: %s' % self._turnowner)
+            if self._lastaction is not None:
+                statuses.append('LAST ACTION was: %s' % self._lastaction.get_status(shortform=True))
             for player in self._players.values():
                 player_statuses.append(player.public_status_check())
-            statuses.append(str.join('\r\n', player_statuses))
-            if self._lastaction is not None:
-                statuses.append('LAST ACTION was: %s' % self._lastaction.get_status())
-            stattext = str.join('\r\n', statuses)
+            if shortform:
+                statuses.append('PLAYERS: ' + str.join('--', player_statuses))
+                stattext = str.join(' - ', statuses)
+            else:
+                statuses.append(str.join('\r\n', player_statuses))
+                stattext = str.join('\r\n', statuses)
+            result = 'Public stats: %s' % (stattext)
+        else:
+            result = 'Game is not running'
+        return result
+
+    def get_public_player_status(self, shortform = True):
+        statuses = []
+        if self.is_running():
+            for player in self._players.values():
+                statuses.append(player.public_status_check())
+            if shortform:
+                stattext = str.join('--', statuses)
+            else:
+                stattext = str.join('\r\n', statuses)
             result = 'Public stats: %s' % (stattext)
         else:
             result = 'Game is not running'
@@ -191,7 +275,7 @@ class Game(object):
                 return '%s is not playing the game' % playername
             if player.has_card_type(cardtype) and (len(player._cards) + len(player._dead_cards)) > 2:
                 player.return_cardtype(cardtype)
-                self._deck.return_card(cardtype)
+                self._deck.return_cards(cardtype)
                 self._deck.shuffle()
                 return '%s returned a card as per ambassador powers' % playername
             else:
@@ -202,7 +286,7 @@ class Game(object):
     def return_and_redraw(self, player, cardtype):
         if player.has_card_type(cardtype):
             player.return_cardtype(cardtype)
-            self._deck.return_card(cardtype)
+            self._deck.return_cards(cardtype)
             self._deck.shuffle()
             self.draw(player)
             return True
@@ -219,15 +303,16 @@ class Game(object):
             elif self._lastaction.actor.name == playername:
                 return 'Cannot challenge your own action!'
             else:
-                result = ''
                 challenge_result = self._lastaction.challenge(player)
                 if challenge_result is None:
-                    result = 'Action cannot be challenged'
+                    result = 'Action cannot be challenged, or challenge failed for some reason'
                 elif challenge_result:
                     result = 'Challenge successful! %s did not have the %s necessary for %s and must forfeit an influence.' % (self._lastaction.actor.name, self._lastaction.card_needed, self._lastaction.name)
+                    self._lastaction.auto_advance()
                 else:
                     result = 'Challenge denied! The %s action was good. %s must forfeit an influence.' % (self._lastaction.name, self._lastaction.challenger.name)
                     self.return_and_redraw(self._lastaction.actor, self._lastaction.card_needed)
+                    result += self.auto_advance_and_resolve()
                 return result
         else:
             return 'Game is not running'
@@ -246,16 +331,19 @@ class Game(object):
             else:
                 result = ''
                 if cardtype is not None:
-                    if cardtype.lower() in ('c', 'captain'):
+                    if cardtype.lower().startswith('c') or cardtype.lower() in 'captain':
                         cardtype = 'Captain'
-                    elif cardtype.lower() in ('a', 'ambassador'):
+                    elif cardtype.lower().startswith('a') or cardtype.lower() in 'ambassador':
                         cardtype = 'Ambassador'
-                block_action = self._lastaction.block(player, cardtype)
-                if block_action is None:
+                    elif cardtype.lower().startswith('d') or cardtype.lower() in 'duke':
+                        cardtype = 'Duke'
+                block_res = self._lastaction.block(player, cardtype)
+                if block_res is None:
                     result = 'Action cannot be blocked for whatever reason'
+                elif block_res:
+                    result = self.auto_advance_and_resolve()
                 else:
-                    self._lastaction = block_action
-                    result = block_action.get_status()
+                    result = 'Cannot block for some reason'
                 return result
         else:
             return 'Game is not running'
@@ -266,10 +354,13 @@ class Game(object):
             if player is None:
                 return '%s is not playing the game' % playername
             else:
-                if self.return_and_redraw(player, cardtype):
-                    return '%s has a %s! It was returned to the deck, and %s drew a new card from the reshuffled deck' % (playername, cardtype, playername)
+                true_cardtype = self._deck.find_card_type(cardtype)
+                if true_cardtype is None:
+                    return 'Cannot resolve %s to a card type' % cardtype
+                if self.return_and_redraw(player, true_cardtype):
+                    return '%s has a %s! It was returned to the deck, and %s drew a new card from the reshuffled deck' % (playername, true_cardtype, playername)
                 else:
-                    return '%s does not have a %s!' % (playername, cardtype)
+                    return '%s does not have a %s!' % (playername, true_cardtype)
         else:
             return 'Game is not running'
     
@@ -291,15 +382,18 @@ class Game(object):
                     statuses[player.name] = player.status_check()
         return statuses
 
-    def kill_influence(self, playername, cardtype):
+    def kill_influence(self, playername, cardtype, admin=False):
         if self.is_running():
             player = self.get_player(playername)
             if player is None:
                 return '%s is not playing the game' % playername
-            if player.kill_card(cardtype):
-                return '%s has chosen a %s to die' % (playername, cardtype)
+            true_cardtype = self._deck.find_card_type(cardtype)
+            if true_cardtype is None:
+                return 'Cannot resolve %s to a card type' % cardtype
+            if player.kill_card(true_cardtype):
+                return '%s has chosen a %s to die%s' % (playername, true_cardtype, ' (decreed by admin)' if admin else '')
             else:
-                return '%s does not have a %s to sacrifice' % (playername, cardtype)
+                return '%s does not have a %s to sacrifice' % (playername, true_cardtype)
         else:
             return 'Game is not running'
 
@@ -325,11 +419,7 @@ class Game(object):
                         return '%s chose invalid victim %s for action %s' % (playername, victimname, actionname)
                 if action.perform(victim):
                     self._lastaction = action 
-                    result = action.get_status()
-                    if action.is_resolved:
-                        result = result + '\r\n' + self.get_next_turnowner()
-                    else:
-                        result = result + '\r\nWaiting for action resolution'
+                    result = self.auto_advance_and_resolve()
                     return result
                 else:
                     return '%s could not perform %s for some reason; investigate please' % (playername, actionname)
@@ -353,7 +443,7 @@ class Game(object):
             player = self.get_player(playername)
             if player is not None and not player.is_dead():
                 returncard = player.return_cardindex(index)
-                self._deck.return_card(returncard)
+                self._deck.return_cards(returncard)
                 return 'Admin has returned a cards for %s' % playername
             else:
                 return '%s is not playing the game' % playername
