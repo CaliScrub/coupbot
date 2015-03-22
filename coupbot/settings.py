@@ -12,7 +12,7 @@ CHANNELS = {
         'password': 'boomboomboom',
     },
     'test': {
-        'name': '#botScrubTest777',
+        'name': '#coupbottest',
     }
 }
 

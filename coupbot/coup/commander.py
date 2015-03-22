@@ -96,7 +96,7 @@ challenge = call someone's bullshit!
             cardtype = params[0]
             result = self.coup_game.reveal(username, cardtype)
             return self.get_response(publicspace, result)
-        elif command == 'ambreturn':
+        elif command == 'ambreturn' or command == 'return':
             cardtype = params[0]
             result = self.coup_game.ambassador_return(username, cardtype)
             return self.get_response(publicspace, result)
@@ -110,6 +110,10 @@ challenge = call someone's bullshit!
             else:
                 result = self.coup_game.block(username)
             return self.get_response(publicspace, result)
+        elif command.startswith('sac'):
+            cardtype = params[0]
+            result = self.coup_game.sacrifice_influence(username, cardtype, admin=False)
+            return self.get_response(publicspace, result)
         elif command == 'score':
             result = self.coup_game.get_score()
             return self.get_response(publicspace, result)
@@ -120,7 +124,7 @@ challenge = call someone's bullshit!
             elif command == 'admin-kill':
                 victim = params[0]
                 cardtype = params[1]
-                result = self.coup_game.kill_influence(victim, cardtype, admin=True)
+                result = self.coup_game.sacrifice_influence(victim, cardtype, admin=True)
                 return self.get_response(publicspace, result)
             elif command == 'admin-addmoney':
                 victim = params[0]

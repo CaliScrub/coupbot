@@ -1,15 +1,26 @@
 import random
 from collections import OrderedDict
 
-from deck import Deck
+from deck import Deck, find_card_type
 from player import Player
 from action import State
 import action
 
-#TODO: !pass, coup status should show list of waiters
+#TODO: coup status should show list of waiters, be less verbose
 
 class Game(object):
-    actions = {'income': action.Income, 'foreignaid': action.ForeignAid, 'tax': action.Tax, 'steal': action.Steal}
+    actions = {
+        'income': action.Income,
+        'foreignaid': action.ForeignAid,
+        'tax': action.Tax,
+        'steal': action.Steal,
+        'coup': action.Coup,
+        'assassinate': action.Assassinate,
+        'kill': action.Assassinate,
+        'ambassador': action.Diplomacy,
+        'diplomacy': action.Diplomacy,
+        'exchange': action.Diplomacy,
+    }
     def __init__(self):
         self._state = 'STARTING'
         self._players = OrderedDict()
@@ -273,10 +284,17 @@ class Game(object):
             player = self.get_player(playername)
             if player is None or player.is_dead():
                 return '%s is not playing the game' % playername
-            if player.has_card_type(cardtype) and (len(player._cards) + len(player._dead_cards)) > 2:
+            true_cardtype = find_card_type(cardtype)
+            if true_cardtype is None:
+                return 'Cannot resolve %s to a card type' % cardtype
+            if player.has_card_type(true_cardtype) and (len(player._cards) + len(player._dead_cards)) > 2:
                 player.return_cardtype(cardtype)
                 self._deck.return_cards(cardtype)
                 self._deck.shuffle()
+                if (len(player._cards) + len(player._dead_cards)) == 2:
+                    if self._lastaction.actor == player:
+                        self._lastaction.resolve_advance()
+                    self.auto_advance_and_resolve()
                 return '%s returned a card as per ambassador powers' % playername
             else:
                 return 'Could not return a card'
@@ -300,8 +318,10 @@ class Game(object):
                 return '%s is not playing the game' % playername
             elif self._lastaction is None:
                 return 'No action to challenge!'
-            elif self._lastaction.actor.name == playername:
+            elif self._lastaction.blocker is None and self._lastaction.actor.name == playername:
                 return 'Cannot challenge your own action!'
+            elif self._lastaction.blocker is not None and self._lastaction.blocker.name == playername:
+                return 'Cannot challenge your own block!'
             else:
                 challenge_result = self._lastaction.challenge(player)
                 if challenge_result is None:
@@ -310,7 +330,7 @@ class Game(object):
                     result = 'Challenge successful! %s did not have the %s necessary for %s and must forfeit an influence.' % (self._lastaction.actor.name, self._lastaction.card_needed, self._lastaction.name)
                     self._lastaction.auto_advance()
                 else:
-                    result = 'Challenge denied! The %s action was good. %s must forfeit an influence.' % (self._lastaction.name, self._lastaction.challenger.name)
+                    result = 'Challenge denied! The %s action was good. %s must forfeit an influence. The challenged player will return the revealed card and draw a new one.' % (self._lastaction.name, self._lastaction.challenger.name)
                     self.return_and_redraw(self._lastaction.actor, self._lastaction.card_needed)
                     result += self.auto_advance_and_resolve()
                 return result
@@ -354,7 +374,7 @@ class Game(object):
             if player is None:
                 return '%s is not playing the game' % playername
             else:
-                true_cardtype = self._deck.find_card_type(cardtype)
+                true_cardtype = find_card_type(cardtype)
                 if true_cardtype is None:
                     return 'Cannot resolve %s to a card type' % cardtype
                 if self.return_and_redraw(player, true_cardtype):
@@ -382,18 +402,25 @@ class Game(object):
                     statuses[player.name] = player.status_check()
         return statuses
 
-    def kill_influence(self, playername, cardtype, admin=False):
+    def sacrifice_influence(self, playername, cardtype, admin=False):
         if self.is_running():
             player = self.get_player(playername)
             if player is None:
                 return '%s is not playing the game' % playername
-            true_cardtype = self._deck.find_card_type(cardtype)
+            true_cardtype = find_card_type(cardtype)
             if true_cardtype is None:
                 return 'Cannot resolve %s to a card type' % cardtype
-            if player.kill_card(true_cardtype):
-                return '%s has chosen a %s to die%s' % (playername, true_cardtype, ' (decreed by admin)' if admin else '')
+            if admin:
+                if player.kill_card(true_cardtype):
+                    return 'Admin forced %s to sacrifice %s' % (playername, true_cardtype)
+                else:
+                    return 'Admin COULD NOT force %s to sacrifice %s' % (playername, true_cardtype)
             else:
-                return '%s does not have a %s to sacrifice' % (playername, true_cardtype)
+                sac_res = self._lastaction.sacrifice(player, true_cardtype)
+                if sac_res:
+                    return self.auto_advance_and_resolve()
+                else:
+                    return '%s could not sacrifice a %s - either does not have card or is not in line for sacrifice' % (playername, true_cardtype)
         else:
             return 'Game is not running'
 
@@ -411,6 +438,7 @@ class Game(object):
             else:
                 actiontype = self.actions[actionname]
                 action = actiontype(player)
+                action.deck = self._deck
                 if victimname is None:
                     victim = None
                 else:

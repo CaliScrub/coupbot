@@ -2,6 +2,7 @@ from enum import Enum
 from copy import deepcopy, copy
 from abc import abstractproperty, abstractmethod, ABCMeta # abstract base class
 from player import Player
+from deck import find_card_type
 
 
 class State(Enum):
@@ -95,6 +96,7 @@ class Action(object):
         self.block_challenger = None
         self.state = State.START
         self.name = 'BaseAction'
+        self.deck = None
         self.status_message = 'Unresolved action'
         self.status_history = 'Unresolved action'
 
@@ -104,10 +106,6 @@ class Action(object):
     
     @abstractmethod
     def perform(self, victim=None):
-        raise NotImplementedError()
-    
-    @abstractmethod
-    def rollback(self):
         raise NotImplementedError()
 
     @abstractproperty
@@ -142,13 +140,16 @@ class Action(object):
             self.state = self.statemap[self.state][state_action]
             self.auto_actions(self.state)
             if state_action != StateAction.AUTO:
-                self.status_message += '- Advanced via %s from state %s to state %s -' % (state_action.name, old_state, self.state)
+                self.status_message += '- Advanced via %s from state %s to state %s -' % (state_action.name, old_state.name, self.state.name)
             return True
         else:
             return False
 
     def pass_advance(self):
         return self.advance_state(StateAction.PASS)
+
+    def resolve_advance(self):
+        return self.advance_state(StateAction.RESOLVE)
 
     def auto_advance(self, advances=0):
         if self.can_advance_state(StateAction.AUTO):
@@ -177,7 +178,7 @@ class Action(object):
                 else:
                     self.blockcard = blockcard
                 self.status_message += '; Blocked by %s with a %s' % (self.blocker.name, self.blockcard)
-                self.advance_state(self, StateAction.BLOCK)
+                self.advance_state(StateAction.BLOCK)
                 return True
         else:
             return None
@@ -187,7 +188,6 @@ class Action(object):
         if not isinstance(challenger, Player):
             raise TypeError()
         if self.is_challengeable and self.can_advance_state(StateAction.CHALLENGE):
-            self.advance_state(StateAction.CHALLENGE)
             if self.state == State.PENDING_CHALLENGE:
                 self.challenger = challenger
                 card_to_check = self.card_needed
@@ -196,6 +196,7 @@ class Action(object):
                 self.block_challenger = challenger
                 card_to_check = self.blockcard
                 player_to_check = self.blocker
+            self.advance_state(StateAction.CHALLENGE)
             if player_to_check.has_card_type(card_to_check):
                 self.advance_state(StateAction.HAS_CARD)
                 self.status_message = self.status_message + '; Challenged by %s, challenge was rebuffed.' % self.challenger.name
@@ -207,7 +208,7 @@ class Action(object):
         else:
             return None
 
-    def sacrifice(self, sacrificer):
+    def sacrifice(self, sacrificer, sacced_card):
         if not isinstance(sacrificer, Player):
             raise TypeError()
         if self.can_advance_state(StateAction.KILL):
@@ -223,7 +224,13 @@ class Action(object):
             if self.state in sac_dict:
                 desired_sacrifice = sac_dict[self.state]
             if sacrificer == desired_sacrifice:
-                pass
+                true_cardtype = find_card_type(sacced_card)
+                if sacrificer.kill_card(true_cardtype):
+                    self.status_message += '; %s sacrificed a %s' % (sacrificer.name, true_cardtype)
+                    self.advance_state(StateAction.KILL)
+                    return True
+                else:
+                    return False
             else:
                 return False
         else:
@@ -244,7 +251,6 @@ class Action(object):
 
 
 class Income(Action):
-
     def __init__(self, player):
         super(Income, self).__init__(player)
         self.name = 'Income'
@@ -252,12 +258,8 @@ class Income(Action):
 
     def perform(self, victim=None):
         self.actor.add_money(1)
-        self.advance_state(True)
         self.status_message = 'Income gave 1 coin to %s who now has %s coins.' % (self.actor.name, self.actor.get_money())
         return True
-    
-    def rollback(self):
-        return False
 
     @property
     def statemap(self):
@@ -275,21 +277,25 @@ class Income(Action):
     def card_needed(self):
         return None
 
-class ForeignAid(Action):
+class Coup(Action):
     def __init__(self, player):
-        super(ForeignAid, self).__init__(player)
-        self.name = 'Foreign Aid'
-        self.required_blockcards = ['Duke']
-        self.only_target_can_block = False
-        self.status_message = 'Unresolved foreign aid action.'
-        self._statemap = deepcopy(STATEMAPS['General'])
+        super(Coup, self).__init__(player)
+        self.name = 'Coup'
+        self.status_message = 'Unresolved coup action.'
+        self._statemap = {
+            State.START: {
+                StateAction.AUTO: State.AWAITING_FINAL_RESOLUTION,
+            },
+            State.AWAITING_FINAL_RESOLUTION: {
+                StateAction.KILL: State.RESOLVED,
+            }
+        }
 
-    def perform(self, victim=None):
-        if not self.is_resolved:
-            self.actor.add_money(2)
-            self.is_resolved = True
-            self.state = State.RESOLVED
-            self.status_message = 'Foreign aid gave 2 coins to %s for a total of %s coins.' % (self.actor.name, self.actor.get_money())
+    def perform(self, victim):
+        if isinstance(self.actor, Player) and isinstance(victim, Player) and self.actor.get_money() >= 7:
+            self.actor.pay_money(7)
+            self.target = victim
+            self.status_message = '%s has orchestrated a coup against %s for 7 coins, now has %s coins left.' % (self.actor.name, self.target.name, self.actor.get_money())
             return True
         else:
             return False
@@ -297,10 +303,66 @@ class ForeignAid(Action):
     @property
     def statemap(self):
         return self._statemap
-    
-    def rollback(self):
-        self.actor.take_money(2)
-        return True
+
+    @property
+    def is_challengeable(self):
+        return False
+
+    @property
+    def is_blockable(self):
+        return False
+
+    @property
+    def card_needed(self):
+        return None
+
+class ForeignAid(Action):
+    def __init__(self, player):
+        super(ForeignAid, self).__init__(player)
+        self.name = 'Foreign Aid'
+        self.required_blockcards = ['Duke']
+        self.default_blockcard = 'Duke'
+        self.only_target_can_block = False
+        self.status_message = 'Unresolved foreign aid action.'
+        self._statemap = deepcopy(STATEMAPS['General'])
+        self._statemap[State.START][StateAction.AUTO] = State.PENDING_BLOCKERS
+        self._statemap[State.PENDING_BLOCKERS] = {
+            StateAction.BLOCK: State.BLOCK_PENDING_CHALLENGE,
+            StateAction.PASS: State.AWAITING_FINAL_RESOLUTION,
+        }
+        self._statemap[State.BLOCK_PENDING_CHALLENGE] = {
+            StateAction.CHALLENGE: State.BLOCK_CHALLENGED,
+            StateAction.PASS: State.RESOLVED,
+        }
+        self._statemap[State.BLOCK_CHALLENGED] = {
+            StateAction.NO_CARD: State.BLOCK_CHALLENGE_UPHELD_AWAITING_KILL,
+            StateAction.HAS_CARD: State.BLOCK_CHALLENGE_DENIED_AWAITING_KILL,
+        }
+        self._statemap[State.BLOCK_CHALLENGE_DENIED_AWAITING_KILL] = {
+            StateAction.KILL: State.RESOLVED,
+        }
+        self._statemap[State.BLOCK_CHALLENGE_UPHELD_AWAITING_KILL] = {
+            StateAction.KILL: State.AWAITING_FINAL_RESOLUTION,
+        },
+        self._statemap[State.AWAITING_FINAL_RESOLUTION] = {
+            StateAction.AUTO: State.RESOLVED,
+        },
+
+    def perform(self, victim=None):
+        if not self.is_resolved:
+            self.status_message = '%s is begging for foreign aid.' % (self.actor.name)
+            return True
+        else:
+            return False
+
+    def auto_actions(self, new_state):
+        if new_state == State.AWAITING_FINAL_RESOLUTION:
+            self.actor.add_money(2)
+            self.status_message += 'Foreign aid gave 2 coins to %s for a total of %s coins.' % (self.actor.name, self.actor.get_money())
+
+    @property
+    def statemap(self):
+        return self._statemap
 
     @property
     def is_challengeable(self):
@@ -336,14 +398,10 @@ class Tax(Action):
             return False
 
     def auto_actions(self, new_state):
-        if new_state == State.RESOLVED:
+        if new_state == State.AWAITING_FINAL_RESOLUTION:
             self.actor.add_money(3)
-            self.status_message += '%s taxed the people for 3 coins with their Duke, so they now have %s coins.' % (self.actor.name, self.actor.get_money())
-    
-    def rollback(self):
-        self.actor.take_money(3)
-        return True
-    
+            self.status_message = '%s taxed the people for 3 coins with their Duke, so they now have %s coins.' % (self.actor.name, self.actor.get_money())
+
     @property
     def is_challengeable(self):
         return True
@@ -360,10 +418,16 @@ class Steal(Action):
     def __init__(self, player):
         super(Steal, self).__init__(player)
         self.name = 'Steal'
+        self.required_blockcards = ['Captain', 'Ambassador']
         self.status_message = 'Unresolved steal.'
+        self._statemap = STATEMAPS['Special']
+        self._statemap[State.AWAITING_FINAL_RESOLUTION][StateAction.AUTO] = State.RESOLVED
+
+    def statemap(self):
+        return self._statemap
 
     def perform(self, victim):
-        if not self.is_resolved:
+        if not self.is_resolved and isinstance(self.actor, Player) and isinstance(victim, Player):
             self.target = victim
             statusparams = {'thief': self.actor.name, 'victim': victim.name}
             self.status_message = '%(thief)s is attempting to steal from %(victim)s with their Captain.' % statusparams
@@ -372,18 +436,12 @@ class Steal(Action):
             return False
 
     def auto_actions(self, new_state):
-        if new_state == State.RESOLVED:
+        if new_state == State.AWAITING_FINAL_RESOLUTION:
             victim = self.target
             self.stolencoins = victim.take_money(2)
             self.actor.add_money(self.stolencoins)
             statusparams = {'thief': self.actor.name, 'thiefcoins': self.actor.get_money(), 'amt': self.stolencoins, 'victim': victim.name, 'victimcoins': victim.get_money()}
             self.status_message = '%(thief)s stole %(amt)s coins from %(victim)s with their Captain, so %(thief)s now has %(thiefcoins)s coins while %(victim)s is left with %(victimcoins)s coins.' % statusparams
-
-    
-    def rollback(self):
-        self.actor.take_money(self.stolencoins)
-        self.target.add_money(self.stolencoins)
-        return True
 
     @property
     def is_challengeable(self):
@@ -397,3 +455,84 @@ class Steal(Action):
     def card_needed(self):
         return 'Captain'
 
+class Assassinate(Action):
+    def __init__(self, player):
+        super(Assassinate, self).__init__(player)
+        self.name = 'Assassinate'
+        self.required_blockcards = ['Contessa']
+        self.default_blockcard = 'Contessa'
+        self.status_message = 'Unresolved assassinate.'
+        self._statemap = STATEMAPS['Special']
+        self._statemap[State.AWAITING_FINAL_RESOLUTION] = {StateAction.KILL: State.RESOLVED}
+
+    def statemap(self):
+        return self._statemap
+
+    def perform(self, victim):
+        if not self.is_resolved and isinstance(self.actor, Player) and isinstance(victim, Player) and self.actor.get_money() >= 3:
+            self.target = victim
+            statusparams = {'killer': self.actor.name, 'victim': victim.name}
+            self.status_message = '%(killer)s is attempting to assassinate from %(victim)s with their Assassin.' % statusparams
+            return True
+        else:
+            return False
+
+    def auto_actions(self, new_state):
+        if new_state == State.PENDING_BLOCKERS:
+            self.actor.pay_money(3)
+        if new_state == State.AWAITING_FINAL_RESOLUTION:
+            victim = self.target
+            statusparams = {'killer': self.actor.name, 'killercoins': self.actor.get_money(), 'victim': victim.name}
+            self.status_message = '%(killer)s has assassinated %(victim)s with their Assassin, so %(killer)s now has %(killercoins)s coins.' % statusparams
+
+    @property
+    def is_challengeable(self):
+        return True
+
+    @property
+    def is_blockable(self):
+        return True
+
+    @property
+    def card_needed(self):
+        return 'Assassin'
+
+class Diplomacy(Action):
+    def __init__(self, player):
+        super(Diplomacy, self).__init__(player)
+        self.name = 'Diplomacy'
+        self._statemap = deepcopy(STATEMAPS['Special'])
+        self._statemap[State.CHALLENGE_DENIED_AWAITING_KILL][StateAction.KILL] = State.AWAITING_FINAL_RESOLUTION
+        self._statemap[State.PENDING_CHALLENGE][StateAction.PASS] = State.AWAITING_FINAL_RESOLUTION
+
+    @property
+    def statemap(self):
+        return self._statemap
+
+    def perform(self, victim=None):
+        if not self.is_resolved:
+            self.status_message = '%s is attempting to switch cards with an Ambassador.' % (self.actor.name)
+            return True
+        else:
+            return False
+
+    def exchange_draw(self):
+        drawn_cards = self.deck.draw(2)
+        self.actor._cards = self.actor._cards + drawn_cards
+
+    def auto_actions(self, new_state):
+        if new_state == State.AWAITING_FINAL_RESOLUTION:
+            self.exchange_draw()
+            self.status_message = '%s has drawn 2 cards and is looking to exchange.' % self.actor.name
+
+    @property
+    def is_challengeable(self):
+        return True
+
+    @property
+    def is_blockable(self):
+        return False
+
+    @property
+    def card_needed(self):
+        return 'Ambassador'

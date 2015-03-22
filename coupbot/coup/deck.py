@@ -9,9 +9,23 @@ cardtype_shorthand = {
     'Ambassador': 'AM',
 }
 
+cardtypes = ['Duke', 'Assassin', 'Contessa', 'Captain', 'Ambassador']
+
+def find_card_type(search_for_card):
+    if search_for_card in cardtypes:
+        return search_for_card
+    else:
+        matched_card = None
+        for card in cardtypes:
+            if search_for_card.lower() in card.lower():
+                if matched_card is None:
+                    matched_card = card
+                # more than 1 card type that lazily matches
+                elif matched_card != card:
+                    return None
+        return matched_card
+
 class Deck(object):
-    cardtypes = ['Duke', 'Assassin', 'Contessa', 'Captain', 'Ambassador']
-    
     def __init__(self, playercount=6):
         self._playercount = playercount
         self._cards = []
@@ -20,26 +34,12 @@ class Deck(object):
             cards_per_type = 5
         elif playercount >= 7:
             cards_per_type = 4
-        for cardtype in self.cardtypes:
+        for cardtype in cardtypes:
             self._cards = self._cards + ([cardtype] * cards_per_type)
         random.shuffle(self._cards)
     
     def shuffle(self):
         random.shuffle(self._cards)
-
-    def find_card_type(self, search_for_card):
-        if search_for_card in self.cardtypes:
-            return search_for_card
-        else:
-            matched_card = None
-            for card in self.cardtypes:
-                if search_for_card.lower() in card.lower():
-                    if matched_card is None:
-                        matched_card = card
-                    # more than 1 card type that lazily matches
-                    elif matched_card != card:
-                        return None
-            return matched_card
     
     def draw(self, numcards=1):
         drawn = []
