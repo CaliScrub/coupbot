@@ -74,9 +74,8 @@ challenge = call someone's bullshit!
                 victim = params[0]
             result = self.coup_game.perform_initiative_action(command, username, victimname=victim)
             return self.get_response(publicspace, result)
-        elif command == 'steal':
-            victim = params[0]
-            result = self.coup_game.steal(username, victim)
+        elif command == 'pass':
+            result = self.coup_game.player_pass(username)
             return self.get_response(publicspace, result)
         elif command == 'clearplayers':
             result = self.coup_game.clear_players()

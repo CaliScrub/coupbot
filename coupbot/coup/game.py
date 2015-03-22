@@ -3,6 +3,7 @@ from collections import OrderedDict
 
 from deck import Deck
 from player import Player
+from action import State
 import action
 
 #TODO: !pass, coup status should show list of waiters
@@ -12,6 +13,7 @@ class Game(object):
     def __init__(self):
         self._state = 'STARTING'
         self._players = OrderedDict()
+        self._passers = ()
         self._deck = None
         self._state = 'STARTING'
         self._lastwinner = None
@@ -65,6 +67,39 @@ class Game(object):
             else:
                 newindex = newindex + 1
         return 'Cannot find a new turn owner'
+
+    def get_necessary_passers(self):
+        if self.check_for_end_state() or self._lastaction is None:
+            return 'Game over, no passers needed'
+        if (self._lastaction.state == State.PENDING_CHALLENGE
+                or (self._lastaction.state == State.PENDING_BLOCKERS
+                    and isinstance(self._lastaction, self.actions['foreign_aid']))):
+            return list(set(self._players) - set([self._lastaction.actor.name]))
+        elif self._lastaction.state == State.BLOCK_PENDING_CHALLENGE:
+            return list(set(self._players) - set([self._lastaction.blocker.name]))
+        elif self._lastaction.state == State.PENDING_BLOCKERS:
+            return [self._lastaction.target]
+        else:
+            return None
+
+    def get_passers_left(self):
+        if self.get_necessary_passers() is None:
+            return None
+        else:
+            return list(set(self.get_necessary_passers()) - set(self._passers))
+
+    def player_pass(self, playername):
+        if self.is_running():
+            player = self.get_player(playername)
+            if player is None or player.is_dead():
+                return '%s is not playing the game' % playername
+            elif playername in self._passers:
+                return '%s has already passed' % playername
+            else:
+                self._passers.add(playername)
+                return '%s has passed'
+        else:
+            return 'Game is not running'
     
     def admin_force_turn_change(self, playername):
         if self.is_running():
