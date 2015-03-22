@@ -1,4 +1,5 @@
 import coup
+import logging
 
 if __name__ == "__main__":
     input_buffer = ''
@@ -15,6 +16,6 @@ if __name__ == "__main__":
                     for rkey in result.iterkeys():
                         print 'Message to %s -> %s' % (rkey, result[rkey])
             except Exception as e:
-                print 'Command failed with exception %s' % e
+                logging.exception('Command %s failed with exception' % command)
     print 'Exiting now'
     exit(0)

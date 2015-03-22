@@ -31,53 +31,49 @@ class StateAction(Enum):
 
 STATEMAPS = {
     'General': {
-        {
-            State.START: {
+        State.START: {
                 StateAction.AUTO: State.RESOLVED,
-            },
-        }
+        },
     },
     'Special': {
-        {
-            State.START: {
-                StateAction.AUTO: State.PENDING_CHALLENGE,
-            },
-            State.PENDING_CHALLENGE: {
-                StateAction.CHALLENGE: State.CHALLENGED,
-                StateAction.PASS: State.PENDING_BLOCKERS,
-            },
-            State.CHALLENGED: {
-                StateAction.NO_CARD: State.CHALLENGE_UPHELD_AWAITING_KILL,
-                StateAction.HAS_CARD: State.CHALLENGE_DENIED_AWAITING_KILL,
-            },
-            State.CHALLENGE_UPHELD_AWAITING_KILL: {
-                StateAction.KILL: State.RESOLVED,
-            },
-            State.CHALLENGE_DENIED_AWAITING_KILL: {
-                StateAction.KILL: State.PENDING_BLOCKERS,
-            },
-            State.PENDING_BLOCKERS: {
-                StateAction.BLOCK: State.BLOCK_PENDING_CHALLENGE,
-                StateAction.PASS: State.AWAITING_FINAL_RESOLUTION,
-            },
-            State.BLOCK_PENDING_CHALLENGE: {
-                StateAction.CHALLENGE: State.BLOCK_CHALLENGED,
-                StateAction.PASS: State.RESOLVED,
-            },
-            State.BLOCK_CHALLENGED: {
-                StateAction.NO_CARD: State.BLOCK_CHALLENGE_UPHELD_AWAITING_KILL,
-                StateAction.HAS_CARD: State.BLOCK_CHALLENGE_DENIED_AWAITING_KILL,
-            },
-            State.BLOCK_CHALLENGE_DENIED_AWAITING_KILL: {
-                StateAction.KILL: State.RESOLVED,
-            },
-            State.BLOCK_CHALLENGE_UPHELD_AWAITING_KILL: {
-                StateAction.KILL: State.AWAITING_FINAL_RESOLUTION,
-            },
-            State.AWAITING_FINAL_RESOLUTION: {
-                StateAction.RESOLVE: State.RESOLVED,
-            },
-        }
+        State.START: {
+            StateAction.AUTO: State.PENDING_CHALLENGE,
+        },
+        State.PENDING_CHALLENGE: {
+            StateAction.CHALLENGE: State.CHALLENGED,
+            StateAction.PASS: State.PENDING_BLOCKERS,
+        },
+        State.CHALLENGED: {
+            StateAction.NO_CARD: State.CHALLENGE_UPHELD_AWAITING_KILL,
+            StateAction.HAS_CARD: State.CHALLENGE_DENIED_AWAITING_KILL,
+        },
+        State.CHALLENGE_UPHELD_AWAITING_KILL: {
+            StateAction.KILL: State.RESOLVED,
+        },
+        State.CHALLENGE_DENIED_AWAITING_KILL: {
+            StateAction.KILL: State.PENDING_BLOCKERS,
+        },
+        State.PENDING_BLOCKERS: {
+            StateAction.BLOCK: State.BLOCK_PENDING_CHALLENGE,
+            StateAction.PASS: State.AWAITING_FINAL_RESOLUTION,
+        },
+        State.BLOCK_PENDING_CHALLENGE: {
+            StateAction.CHALLENGE: State.BLOCK_CHALLENGED,
+            StateAction.PASS: State.RESOLVED,
+        },
+        State.BLOCK_CHALLENGED: {
+            StateAction.NO_CARD: State.BLOCK_CHALLENGE_UPHELD_AWAITING_KILL,
+            StateAction.HAS_CARD: State.BLOCK_CHALLENGE_DENIED_AWAITING_KILL,
+        },
+        State.BLOCK_CHALLENGE_DENIED_AWAITING_KILL: {
+            StateAction.KILL: State.RESOLVED,
+        },
+        State.BLOCK_CHALLENGE_UPHELD_AWAITING_KILL: {
+            StateAction.KILL: State.AWAITING_FINAL_RESOLUTION,
+        },
+        State.AWAITING_FINAL_RESOLUTION: {
+            StateAction.RESOLVE: State.RESOLVED,
+        },
     }
 }
 
@@ -130,6 +126,13 @@ class Action(object):
     def card_needed(self):
         raise NotImplementedError()
 
+    def auto_actions(self, new_state):
+        return
+
+    def force_resolve(self):
+        """For admin use only!!!"""
+        self.state = State.RESOLVED
+
     def can_advance_state(self, state_action):
         return self.state in self.statemap and state_action in self.statemap[self.state]
 
@@ -137,7 +140,9 @@ class Action(object):
         if self.can_advance_state(state_action):
             old_state = self.state
             self.state = self.statemap[self.state][state_action]
-            self.status_message = self.status_message + ' Advanced via %s from state %s to state %s' % (state_action.name, old_state, self.state)
+            self.auto_actions(self.state)
+            if state_action != StateAction.AUTO:
+                self.status_message += '- Advanced via %s from state %s to state %s -' % (state_action.name, old_state, self.state)
             return True
         else:
             return False
@@ -173,6 +178,7 @@ class Action(object):
                     self.blockcard = blockcard
                 self.status_message += '; Blocked by %s with a %s' % (self.blocker.name, self.blockcard)
                 self.advance_state(self, StateAction.BLOCK)
+                return True
         else:
             return None
     
@@ -181,6 +187,7 @@ class Action(object):
         if not isinstance(challenger, Player):
             raise TypeError()
         if self.is_challengeable and self.can_advance_state(StateAction.CHALLENGE):
+            self.advance_state(StateAction.CHALLENGE)
             if self.state == State.PENDING_CHALLENGE:
                 self.challenger = challenger
                 card_to_check = self.card_needed
@@ -272,9 +279,10 @@ class ForeignAid(Action):
     def __init__(self, player):
         super(ForeignAid, self).__init__(player)
         self.name = 'Foreign Aid'
-        self.required_blockcards
+        self.required_blockcards = ['Duke']
         self.only_target_can_block = False
         self.status_message = 'Unresolved foreign aid action.'
+        self._statemap = deepcopy(STATEMAPS['General'])
 
     def perform(self, victim=None):
         if not self.is_resolved:
@@ -285,6 +293,10 @@ class ForeignAid(Action):
             return True
         else:
             return False
+
+    @property
+    def statemap(self):
+        return self._statemap
     
     def rollback(self):
         self.actor.take_money(2)
@@ -307,17 +319,26 @@ class Tax(Action):
     def __init__(self, player):
         super(Tax, self).__init__(player)
         self.name = 'Tax'
-        self.status_message = 'Unresolved tax.'
+        self._statemap = deepcopy(STATEMAPS['Special'])
+        self._statemap[State.CHALLENGE_DENIED_AWAITING_KILL][StateAction.KILL] = State.AWAITING_FINAL_RESOLUTION
+        self._statemap[State.PENDING_CHALLENGE][StateAction.PASS] = State.AWAITING_FINAL_RESOLUTION
+        self._statemap[State.AWAITING_FINAL_RESOLUTION][StateAction.AUTO] = State.RESOLVED
+
+    @property
+    def statemap(self):
+        return self._statemap
 
     def perform(self, victim=None):
         if not self.is_resolved:
-            self.actor.add_money(3)
-            self.is_resolved = True
-            self.state = State.RESOLVED
-            self.status_message = '%s taxed the people for 3 coins with their Duke, so they now have %s coins.' % (self.actor.name, self.actor.get_money())
+            self.status_message = '%s is attempting to tax with their Duke.' % (self.actor.name)
             return True
         else:
             return False
+
+    def auto_actions(self, new_state):
+        if new_state == State.RESOLVED:
+            self.actor.add_money(3)
+            self.status_message += '%s taxed the people for 3 coins with their Duke, so they now have %s coins.' % (self.actor.name, self.actor.get_money())
     
     def rollback(self):
         self.actor.take_money(3)
@@ -344,29 +365,26 @@ class Steal(Action):
     def perform(self, victim):
         if not self.is_resolved:
             self.target = victim
-            self.stolencoins = victim.take_money(2)
-            self.actor.add_money(self.stolencoins)
-            self.is_resolved = True
-            self.state =  State.RESOLVED
-            statusparams = {'thief': self.actor.name, 'thiefcoins': self.actor.get_money(), 'amt': self.stolencoins, 'victim': victim.name, 'victimcoins': victim.get_money()}
-            self.status_message = '%(thief)s stole %(amt)s coins from %(victim)s with their Captain, so %(thief)s now has %(thiefcoins)s coins while %(victim)s is left with %(victimcoins)s coins.' % statusparams
+            statusparams = {'thief': self.actor.name, 'victim': victim.name}
+            self.status_message = '%(thief)s is attempting to steal from %(victim)s with their Captain.' % statusparams
             return True
         else:
             return False
+
+    def auto_actions(self, new_state):
+        if new_state == State.RESOLVED:
+            victim = self.target
+            self.stolencoins = victim.take_money(2)
+            self.actor.add_money(self.stolencoins)
+            statusparams = {'thief': self.actor.name, 'thiefcoins': self.actor.get_money(), 'amt': self.stolencoins, 'victim': victim.name, 'victimcoins': victim.get_money()}
+            self.status_message = '%(thief)s stole %(amt)s coins from %(victim)s with their Captain, so %(thief)s now has %(thiefcoins)s coins while %(victim)s is left with %(victimcoins)s coins.' % statusparams
+
     
     def rollback(self):
         self.actor.take_money(self.stolencoins)
         self.target.add_money(self.stolencoins)
         return True
 
-    def block(self, blocker, cardtype):
-        if not self.was_blocked:
-            self.rollback()
-            self.was_blocked = True
-            return BlockSteal(blocker, self.actor, self, cardtype)
-        else:
-            return None
-    
     @property
     def is_challengeable(self):
         return True

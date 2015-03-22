@@ -13,7 +13,7 @@ class Game(object):
     def __init__(self):
         self._state = 'STARTING'
         self._players = OrderedDict()
-        self._passers = ()
+        self._passers = []
         self._deck = None
         self._state = 'STARTING'
         self._lastwinner = None
@@ -62,15 +62,31 @@ class Game(object):
             newname = playernames[newindex]
             player = self.get_player(newname, exact=True)
             if player is not None and not player.is_dead() and newname != self._turnowner:
+                self._passers = []
                 self._turnowner = newname
                 return 'It is now %s\'s turn' % newname
             else:
                 newindex = newindex + 1
         return 'Cannot find a new turn owner'
 
+    def auto_advance_and_resolve(self):
+        if self.check_for_end_state():
+            return 'Game over, no need to advance'
+        elif self._lastaction is None:
+            return 'Game just started, no action yet?'
+        else:
+            self._lastaction.auto_advance()
+            result = self._lastaction.get_status()
+            if self._lastaction.is_resolved:
+                result += '\r\n' + self.get_next_turnowner()
+            return result
+
+
     def get_necessary_passers(self):
-        if self.check_for_end_state() or self._lastaction is None:
+        if self.check_for_end_state():
             return 'Game over, no passers needed'
+        elif self._lastaction is None:
+            return 'No action to pass for'
         if (self._lastaction.state == State.PENDING_CHALLENGE
                 or (self._lastaction.state == State.PENDING_BLOCKERS
                     and isinstance(self._lastaction, self.actions['foreign_aid']))):
@@ -96,15 +112,19 @@ class Game(object):
             elif playername in self._passers:
                 return '%s has already passed' % playername
             else:
-                self._passers.add(playername)
-                return '%s has passed'
+                self._passers.append(playername)
+                if len(self.get_passers_left()) > 0:
+                    return '%s has passed' % playername
+                else:
+                    self._lastaction.pass_advance()
+                    return self.auto_advance_and_resolve()
         else:
             return 'Game is not running'
     
     def admin_force_turn_change(self, playername):
         if self.is_running():
             if self._lastaction is not None and not self._lastaction.is_resolved:
-                self._lastaction.is_resolved = True # to let the game continue
+                self._lastaction.force_resolve() # to let the game continue
                 self._lastaction.status_message = self._lastaction.status_message + '\r\nAction resolution forced by admin'
             player = self.get_player(playername)
             if player is not None and not player.is_dead():
@@ -283,15 +303,16 @@ class Game(object):
             elif self._lastaction.actor.name == playername:
                 return 'Cannot challenge your own action!'
             else:
-                result = ''
                 challenge_result = self._lastaction.challenge(player)
                 if challenge_result is None:
-                    result = 'Action cannot be challenged'
+                    result = 'Action cannot be challenged, or challenge failed for some reason'
                 elif challenge_result:
                     result = 'Challenge successful! %s did not have the %s necessary for %s and must forfeit an influence.' % (self._lastaction.actor.name, self._lastaction.card_needed, self._lastaction.name)
+                    self._lastaction.auto_advance()
                 else:
                     result = 'Challenge denied! The %s action was good. %s must forfeit an influence.' % (self._lastaction.name, self._lastaction.challenger.name)
                     self.return_and_redraw(self._lastaction.actor, self._lastaction.card_needed)
+                    result += self.auto_advance_and_resolve()
                 return result
         else:
             return 'Game is not running'
@@ -310,16 +331,19 @@ class Game(object):
             else:
                 result = ''
                 if cardtype is not None:
-                    if cardtype.lower() in ('c', 'captain'):
+                    if cardtype.lower().startswith('c') or cardtype.lower() in 'captain':
                         cardtype = 'Captain'
-                    elif cardtype.lower() in ('a', 'ambassador'):
+                    elif cardtype.lower().startswith('a') or cardtype.lower() in 'ambassador':
                         cardtype = 'Ambassador'
-                block_action = self._lastaction.block(player, cardtype)
-                if block_action is None:
+                    elif cardtype.lower().startswith('d') or cardtype.lower() in 'duke':
+                        cardtype = 'Duke'
+                block_res = self._lastaction.block(player, cardtype)
+                if block_res is None:
                     result = 'Action cannot be blocked for whatever reason'
+                elif block_res:
+                    result = self.auto_advance_and_resolve()
                 else:
-                    self._lastaction = block_action
-                    result = block_action.get_status()
+                    result = 'Cannot block for some reason'
                 return result
         else:
             return 'Game is not running'
@@ -395,11 +419,7 @@ class Game(object):
                         return '%s chose invalid victim %s for action %s' % (playername, victimname, actionname)
                 if action.perform(victim):
                     self._lastaction = action 
-                    result = action.get_status()
-                    if action.is_resolved:
-                        result = result + '\r\n' + self.get_next_turnowner()
-                    else:
-                        result = result + '\r\nWaiting for action resolution'
+                    result = self.auto_advance_and_resolve()
                     return result
                 else:
                     return '%s could not perform %s for some reason; investigate please' % (playername, actionname)
